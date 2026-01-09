@@ -1,4 +1,4 @@
-// 本插件从项目 https://github.com/huangxd-/danmu_api.git 一键导出，配置参数使用说明请参考该项目README
+// 本插件从项目 https://github.com/kingcarn/danmu_api.git 一键导出，配置参数使用说明请参考该项目README
 
 class URL {
   constructor(url, base) {
@@ -9248,7 +9248,7 @@ WidgetMetadata = {
   requiredVersion: "0.0.2",
   description: "\u81EA\u52A8\u83B7\u53D6\u64AD\u653E\u94FE\u63A5\u5E76\u4ECE\u670D\u52A1\u5668\u83B7\u53D6\u5F39\u5E55\u3010\u4E94\u6298\u7801\uFF1ACHEAP.5;\u4E03\u6298\u7801\uFF1ACHEAP\u3011",
   author: "huangxd",
-  site: "https://github.com/huangxd-/ForwardWidgets",
+  site: "https://github.com/kingcarn/ForwardWidgets",
   globalParams: [
     // 源配置
     {
