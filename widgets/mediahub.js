@@ -1,11 +1,11 @@
 WidgetMetadata = {
-    id: "ultimate_media_hub_pro_ui",
-    title: "全球影视 | 分流聚合",
-    author: "𝙈𝙖𝙠𝙠𝙖𝙋𝙖𝙠𝙠𝙖",
-    description: "集大成之作：Trakt/豆瓣/平台分流，全线支持【日期•类型】展示。",
-    version: "1.3.3", // 升级版本号
+    id: "kingcarn's test plugin",
+    title: "kingcarn's FWD module",
+    author: "kingcarn",
+    description: "增加全平台和时间排序",
+    version: "1.3.4", // 升级版本号
     requiredVersion: "0.0.1",
-    site: "https://www.themoviedb.org",
+    site: "https://https://github.com/kingcarn",
     // 1. 全局参数 (仅剩 Trakt ID，且选填)
     globalParams: [
         {
