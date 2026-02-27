@@ -3,7 +3,7 @@ WidgetMetadata = {
     title: "kingcarn's FWD module",
     author: "kingcarn",
     description: "增加全平台和时间排序",
-    version: "1.3.6", // 升级版本号
+    version: "1.3.7", // 升级版本号
     requiredVersion: "0.0.1",
     site: "https://github.com/kingcarn",
     // 1. 全局参数 (仅剩 Trakt ID，且选填)
@@ -147,8 +147,9 @@ WidgetMetadata = {
                 },
                 {
                     name: "sort_by",
-                    title: "排序",
+                    title: "排序方式",
                     type: "enumeration",
+                    quickSelect: true,
                     value: "popularity.desc",
                     enumOptions: [
                         { title: "🔥 热度最高", value: "popularity.desc" },
