@@ -67,8 +67,9 @@ WidgetMetadata = {
                     name: "platformId",
                     title: "播出平台",
                     type: "enumeration",
-                    value: "2007",
+                    value: "all", // 默认值改为 all
                     enumOptions: [
+                        { title: "🌐 全部平台", value: "all" }, // 新增全部平台选项
                         { title: "腾讯视频", value: "2007" },
                         { title: "爱奇艺", value: "1330" },
                         { title: "优酷", value: "1419" },
@@ -99,8 +100,11 @@ WidgetMetadata = {
                     value: "popularity.desc",
                     enumOptions: [
                         { title: "🔥 热度最高", value: "popularity.desc" },
+                        { title: "⭐ 评分最高", value: "vote_average.desc" },
                         { title: "📅 最新首播", value: "first_air_date.desc" },
-                        { title: "⭐ 评分最高", value: "vote_average.desc" }
+                        { title: "📅 最早首播", value: "first_air_date.asc" }, // 新增发行时间正序
+                        { title: "📅 发行时间倒序", value: "release_date.desc" }, // 新增发行时间倒序（针对电影）
+                        { title: "📅 发行时间正序", value: "release_date.asc" } // 新增发行时间正序（针对电影）
                     ]
                 },
                 { name: "page", title: "页码", type: "page" }
@@ -237,6 +241,11 @@ async function loadPlatformMatrix(params = {}) {
     const { platformId, category = "tv_drama", sort = "popularity.desc" } = params;
     const page = params.page || 1;
 
+    // 如果选择了全部平台，需要分别获取数据
+    if (platformId === "all") {
+        return await fetchAllPlatformsData(category, sort, page);
+    }
+
     const foreignPlatforms = ["213", "2739", "49", "2552"];
     if (category === "movie" && !foreignPlatforms.includes(platformId)) {
         return page === 1 ? [{ id: "empty", type: "text", title: "暂不支持国内平台电影", description: "请切换为剧集或国外平台" }] : [];
@@ -270,6 +279,119 @@ async function loadPlatformMatrix(params = {}) {
 // =========================================================================
 // 2. 数据获取 (Helpers)
 // =========================================================================
+
+// 新增：获取所有平台的数据
+async function fetchAllPlatformsData(category, sort, page) {
+    // 所有平台的ID列表
+    const allPlatforms = ["2007", "1330", "1419", "1631", "1605", "213", "2739", "49", "2552"];
+    const foreignPlatforms = ["213", "2739", "49", "2552"];
+    
+    // 如果是电影分类，只使用国外平台
+    let platformsToFetch = category === "movie" ? foreignPlatforms : allPlatforms;
+    
+    try {
+        // 并行获取所有平台的数据
+        const promises = platformsToFetch.map(async platformId => {
+            const queryParams = {
+                language: "zh-CN",
+                sort_by: sort,
+                page: page,
+                include_adult: false,
+                include_null_first_air_dates: false
+            };
+
+            if (category.startsWith("tv_")) {
+                queryParams.with_networks = platformId;
+                if (category === "tv_anime") queryParams.with_genres = "16";
+                else if (category === "tv_variety") queryParams.with_genres = "10764|10767";
+                else if (category === "tv_drama") queryParams.without_genres = "16,10764,10767";
+                
+                return await fetchTmdbDiscoverRaw("tv", queryParams);
+            } else if (category === "movie") {
+                const usMap = { "213":"8", "2739":"337", "49":"1899|15", "2552":"350" };
+                queryParams.watch_region = "US";
+                queryParams.with_watch_providers = usMap[platformId];
+                
+                return await fetchTmdbDiscoverRaw("movie", queryParams);
+            }
+            return [];
+        });
+
+        const results = await Promise.all(promises);
+        
+        // 合并所有结果
+        let allItems = [];
+        results.forEach(items => {
+            if (items && items.length > 0) {
+                allItems = allItems.concat(items);
+            }
+        });
+
+        // 去重（基于tmdbId）
+        const uniqueItems = [];
+        const seenIds = new Set();
+        
+        allItems.forEach(item => {
+            if (!seenIds.has(item.tmdbId)) {
+                seenIds.add(item.tmdbId);
+                uniqueItems.push(item);
+            }
+        });
+
+        // 根据排序参数重新排序
+        uniqueItems.sort((a, b) => {
+            if (sort.includes("popularity")) {
+                return (b.rating || 0) - (a.rating || 0);
+            } else if (sort.includes("vote_average")) {
+                return (b.rating || 0) - (a.rating || 0);
+            } else if (sort.includes("first_air_date") || sort.includes("release_date")) {
+                const dateA = a.releaseDate || "";
+                const dateB = b.releaseDate || "";
+                if (sort.endsWith(".desc")) {
+                    return dateB.localeCompare(dateA);
+                } else {
+                    return dateA.localeCompare(dateB);
+                }
+            }
+            return 0;
+        });
+
+        return uniqueItems.slice(0, 50); // 限制返回数量
+
+    } catch (e) {
+        return [{ id: "err", type: "text", title: "加载失败" }];
+    }
+}
+
+// 新增：原始数据获取，不进行buildItem处理
+async function fetchTmdbDiscoverRaw(mediaType, params) {
+    try {
+        const res = await Widget.tmdb.get(`/discover/${mediaType}`, { params });
+        const data = res || {};
+        if (!data.results || data.results.length === 0) return [];
+        
+        return data.results.map(item => {
+            const date = item.first_air_date || item.release_date || "";
+            const genreText = getGenreText(item.genre_ids);
+            
+            return buildItem({
+                id: item.id,
+                tmdbId: item.id,
+                type: mediaType,
+                title: item.name || item.title,
+                date: date,
+                poster: item.poster_path,
+                backdrop: item.backdrop_path,
+                rating: item.vote_average?.toFixed(1) || "0.0",
+                genreText: genreText,
+                subTitle: `⭐ ${item.vote_average?.toFixed(1)}`,
+                desc: item.overview
+            });
+        });
+    } catch (e) { 
+        return []; 
+    }
+}
 
 async function fetchTmdbDiscover(mediaType, params) {
     try {
