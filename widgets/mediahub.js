@@ -3,7 +3,7 @@ WidgetMetadata = {
     title: "kingcarn's FWD module",
     author: "kingcarn",
     description: "增加全平台和时间排序",
-    version: "1.3.10", // 升级版本号
+    version: "1.3.11", // 升级版本号
     requiredVersion: "0.0.1",
     site: "https://github.com/kingcarn",
     // 1. 全局参数 (仅剩 Trakt ID，且选填)
@@ -150,11 +150,10 @@ WidgetMetadata = {
                     name: "sort_by",
                     title: "排序方式",
                     type: "enumeration",
-                    value: "popularity.desc",
-                    // 添加quickSelect属性，指示UI优先显示为快捷选择
-                    quickSelect: true,
+                    value: "trending.desc", // 默认改为近期热门
                     // 简化选项标题，便于快捷选择
                     enumOptions: [
+                        { title: "📈 近期热门", value: "trending.desc" }, // 新增近期热门选项
                         { title: "🔥 热度", value: "popularity.desc" },
                         { title: "⭐ 评分", value: "vote_average.desc" },
                         { title: "🌞 最新", value: "first_air_date.desc" },
@@ -233,6 +232,12 @@ const GENRE_NAME_TO_ID = {
     "悬疑": 9648, "爱情": 10749, "科幻": 878, "电视电影": 10770, "惊悚": 53,
     "战争": 10752, "西部": 37, "动作冒险": 10759, "儿童": 10762, "新闻": 10763,
     "真人秀": 10764, "科幻奇幻": 10765, "肥皂剧": 10766, "脱口秀": 10767, "战争政治": 10768
+};
+
+// 近期热门排序的权重配置
+const TRENDING_WEIGHTS = {
+    POPULARITY: 0.6,  // 热度权重 60%
+    DATE: 0.4         // 发行时间权重 40%
 };
 
 function getGenreText(ids) {
@@ -356,7 +361,7 @@ async function loadTrendHub(params = {}) {
  * @returns {Promise<Array>} 影视数据列表
  */
 async function loadPlatformMatrix(params = {}) {
-    const { platformId, region = "all", genre = "all", category = "tv_drama", sort_by = "popularity.desc" } = params;
+    const { platformId, region = "all", genre = "all", category = "tv_drama", sort_by = "trending.desc" } = params;
     const page = params.page || 1;
 
     // 如果选择了全部平台，需要分别获取数据
@@ -371,7 +376,7 @@ async function loadPlatformMatrix(params = {}) {
 
     const queryParams = {
         language: "zh-CN",
-        sort_by: sort_by,
+        sort_by: sort_by === "trending.desc" ? "popularity.desc" : sort_by, // 如果是近期热门，先用热度排序获取数据
         page: page,
         include_adult: false,
         include_null_first_air_dates: false
@@ -396,7 +401,7 @@ async function loadPlatformMatrix(params = {}) {
             }
         }
         
-        return await fetchTmdbDiscover("tv", queryParams);
+        return await fetchTmdbDiscover("tv", queryParams, sort_by);
 
     } else if (category === "movie") {
         const usMap = { "213":"8", "2739":"337", "49":"1899|15", "2552":"350" };
@@ -407,7 +412,7 @@ async function loadPlatformMatrix(params = {}) {
             queryParams.with_genres = genre;
         }
         
-        return await fetchTmdbDiscover("movie", queryParams);
+        return await fetchTmdbDiscover("movie", queryParams, sort_by);
     }
 }
 
@@ -478,6 +483,30 @@ function filterByGenre(items, genre) {
     });
 }
 
+/**
+ * 计算近期热门分数
+ * @param {number} popularity - 热度值
+ * @param {string} dateStr - 发行日期字符串
+ * @returns {number} 综合分数
+ */
+function calculateTrendingScore(popularity, dateStr) {
+    if (!dateStr) return popularity * TRENDING_WEIGHTS.POPULARITY; // 无日期时只考虑热度
+    
+    const releaseDate = new Date(dateStr);
+    const now = new Date();
+    const daysDiff = Math.floor((now - releaseDate) / (1000 * 60 * 60 * 24));
+    
+    // 日期分数：越新的分数越高，设置一个衰减系数
+    // 使用指数衰减，让新片有更高分数
+    const dateScore = Math.exp(-daysDiff / 365) * 10; // 一年衰减到约36.8%
+    
+    // 热度分数：归一化处理（假设热度通常在0-10之间）
+    const popularityScore = popularity || 0;
+    
+    // 综合分数：热度60% + 日期40%
+    return (popularityScore * TRENDING_WEIGHTS.POPULARITY) + (dateScore * TRENDING_WEIGHTS.DATE);
+}
+
 // 获取所有平台的数据
 async function fetchAllPlatformsData(category, region, genre, sort, page) {
     // 所有平台的ID列表
@@ -504,7 +533,7 @@ async function fetchAllPlatformsData(category, region, genre, sort, page) {
         const promises = platformsToFetch.map(async platformId => {
             const queryParams = {
                 language: "zh-CN",
-                sort_by: sort,
+                sort_by: sort === "trending.desc" ? "popularity.desc" : sort, // 如果是近期热门，先用热度排序获取数据
                 page: page,
                 include_adult: false,
                 include_null_first_air_dates: false
@@ -571,10 +600,16 @@ async function fetchAllPlatformsData(category, region, genre, sort, page) {
             }
         });
 
-        // 修复：改进日期排序逻辑，将字符串日期转换为Date对象进行正确比较
+        // 根据排序参数重新排序
         uniqueItems.sort((a, b) => {
+            // 近期热门排序（热度60% + 日期40%）
+            if (sort === "trending.desc") {
+                const scoreA = calculateTrendingScore(a.rating, a.releaseDate);
+                const scoreB = calculateTrendingScore(b.rating, b.releaseDate);
+                return scoreB - scoreA; // 降序
+            }
             // 热度排序
-            if (sort.includes("popularity")) {
+            else if (sort.includes("popularity")) {
                 return (b.rating || 0) - (a.rating || 0);
             } 
             // 评分排序
@@ -651,9 +686,10 @@ async function fetchTmdbDiscoverRaw(mediaType, params) {
  * 获取TMDB发现页面数据（带空数据提示）
  * @param {string} mediaType - 媒体类型（tv/movie）
  * @param {Object} params - 查询参数
+ * @param {string} sortType - 排序类型
  * @returns {Promise<Array>} 影视数据列表
  */
-async function fetchTmdbDiscover(mediaType, params) {
+async function fetchTmdbDiscover(mediaType, params, sortType) {
     try {
         const res = await Widget.tmdb.get(`/discover/${mediaType}`, { params });
         const data = res || {};
@@ -661,7 +697,7 @@ async function fetchTmdbDiscover(mediaType, params) {
             return params.page === 1 ? [{ id: "empty", type: "text", title: "暂无数据" }] : [];
         }
         
-        return data.results.map(item => {
+        let items = data.results.map(item => {
             const date = item.first_air_date || item.release_date || "";
             const genreText = getGenreText(item.genre_ids);
             
@@ -679,6 +715,17 @@ async function fetchTmdbDiscover(mediaType, params) {
                 desc: item.overview
             });
         });
+
+        // 如果是近期热门排序，需要重新计算排序
+        if (sortType === "trending.desc") {
+            items.sort((a, b) => {
+                const scoreA = calculateTrendingScore(a.rating, a.releaseDate);
+                const scoreB = calculateTrendingScore(b.rating, b.releaseDate);
+                return scoreB - scoreA;
+            });
+        }
+        
+        return items;
     } catch (e) { 
         console.error(`fetchTmdbDiscover error for ${mediaType}:`, e);
         return [{ id: "err", type: "text", title: "加载失败" }]; 
