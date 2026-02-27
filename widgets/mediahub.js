@@ -3,7 +3,7 @@ WidgetMetadata = {
     title: "kingcarn's FWD module",
     author: "kingcarn",
     description: "增加全平台和时间排序",
-    version: "1.3.8", // 升级版本号
+    version: "1.3.9", // 升级版本号
     requiredVersion: "0.0.1",
     site: "https://github.com/kingcarn",
     // 1. 全局参数 (仅剩 Trakt ID，且选填)
@@ -146,10 +146,9 @@ WidgetMetadata = {
                     ]
                 },
                 {
-                    name: "sort",
+                    name: "sort_by",
                     title: "排序方式",
                     type: "enumeration",
-                    quickSelect: true,
                     value: "popularity.desc",
                     enumOptions: [
                         { title: "🔥 热度最高", value: "popularity.desc" },
@@ -344,12 +343,12 @@ async function loadTrendHub(params = {}) {
 }
 
 async function loadPlatformMatrix(params = {}) {
-    const { platformId, region = "all", genre = "all", category = "tv_drama", sort = "popularity.desc" } = params;
+    const { platformId, region = "all", genre = "all", category = "tv_drama", sort_by = "popularity.desc" } = params;
     const page = params.page || 1;
 
     // 如果选择了全部平台，需要分别获取数据
     if (platformId === "all") {
-        return await fetchAllPlatformsData(category, region, genre, sort, page);
+        return await fetchAllPlatformsData(category, region, genre, sort_by, page);
     }
 
     const foreignPlatforms = ["213", "2739", "49", "2552"];
@@ -359,7 +358,7 @@ async function loadPlatformMatrix(params = {}) {
 
     const queryParams = {
         language: "zh-CN",
-        sort_by: sort,
+        sort_by: sort_by,
         page: page,
         include_adult: false,
         include_null_first_air_dates: false
