@@ -60,16 +60,16 @@ WidgetMetadata = {
         {
             title: "📺 平台分流片库",
             functionName: "loadPlatformMatrix",
-            type: "video", // 改为 video 以支持更好的海报排版
+            type: "video",
             cacheDuration: 3600,
             params: [
                 {
                     name: "platformId",
                     title: "播出平台",
                     type: "enumeration",
-                    value: "all", // 默认值改为 all
+                    value: "all",
                     enumOptions: [
-                        { title: "🌐 全部平台", value: "all" }, // 新增全部平台选项
+                        { title: "🌐 全部平台", value: "all" },
                         { title: "腾讯视频", value: "2007" },
                         { title: "爱奇艺", value: "1330" },
                         { title: "优酷", value: "1419" },
@@ -98,6 +98,42 @@ WidgetMetadata = {
                     ]
                 },
                 {
+                    name: "genre",
+                    title: "类别筛选",
+                    type: "enumeration",
+                    value: "all",
+                    enumOptions: [
+                        { title: "🎬 全部类别", value: "all" },
+                        { title: "🔥 动作", value: "28" },
+                        { title: "🏔️ 冒险", value: "12" },
+                        { title: "🎨 动画", value: "16" },
+                        { title: "😄 喜剧", value: "35" },
+                        { title: "🔫 犯罪", value: "80" },
+                        { title: "📽️ 纪录片", value: "99" },
+                        { title: "📖 剧情", value: "18" },
+                        { title: "👨‍👩‍👧‍👦 家庭", value: "10751" },
+                        { title: "🧙 奇幻", value: "14" },
+                        { title: "📜 历史", value: "36" },
+                        { title: "👻 恐怖", value: "27" },
+                        { title: "🎵 音乐", value: "10402" },
+                        { title: "🔍 悬疑", value: "9648" },
+                        { title: "💕 爱情", value: "10749" },
+                        { title: "🤖 科幻", value: "878" },
+                        { title: "📺 电视电影", value: "10770" },
+                        { title: "😱 惊悚", value: "53" },
+                        { title: "⚔️ 战争", value: "10752" },
+                        { title: "🤠 西部", value: "37" },
+                        { title: "⚡ 动作冒险", value: "10759" },
+                        { title: "🧸 儿童", value: "10762" },
+                        { title: "📰 新闻", value: "10763" },
+                        { title: "🎭 真人秀", value: "10764" },
+                        { title: "🚀 科幻奇幻", value: "10765" },
+                        { title: "💧 肥皂剧", value: "10766" },
+                        { title: "💬 脱口秀", value: "10767" },
+                        { title: "🏛️ 战争政治", value: "10768" }
+                    ]
+                },
+                {
                     name: "category",
                     title: "内容分类",
                     type: "enumeration",
@@ -118,9 +154,9 @@ WidgetMetadata = {
                         { title: "🔥 热度最高", value: "popularity.desc" },
                         { title: "⭐ 评分最高", value: "vote_average.desc" },
                         { title: "📅 最新首播", value: "first_air_date.desc" },
-                        { title: "📅 最早首播", value: "first_air_date.asc" }, // 新增发行时间正序
-                        { title: "📅 发行时间倒序", value: "release_date.desc" }, // 新增发行时间倒序（针对电影）
-                        { title: "📅 发行时间正序", value: "release_date.asc" } // 新增发行时间正序（针对电影）
+                        { title: "📅 最早首播", value: "first_air_date.asc" },
+                        { title: "📅 发行时间倒序", value: "release_date.desc" },
+                        { title: "📅 发行时间正序", value: "release_date.asc" }
                     ]
                 },
                 { name: "page", title: "页码", type: "page" }
@@ -184,6 +220,15 @@ const GENRE_MAP = {
     9648: "悬疑", 10749: "爱情", 878: "科幻", 10770: "电视电影", 53: "惊悚",
     10752: "战争", 37: "西部", 10759: "动作冒险", 10762: "儿童", 10763: "新闻",
     10764: "真人秀", 10765: "科幻奇幻", 10766: "肥皂剧", 10767: "脱口秀", 10768: "战争政治"
+};
+
+// 反向映射，用于获取类别ID
+const GENRE_NAME_TO_ID = {
+    "动作": 28, "冒险": 12, "动画": 16, "喜剧": 35, "犯罪": 80, "纪录片": 99,
+    "剧情": 18, "家庭": 10751, "奇幻": 14, "历史": 36, "恐怖": 27, "音乐": 10402,
+    "悬疑": 9648, "爱情": 10749, "科幻": 878, "电视电影": 10770, "惊悚": 53,
+    "战争": 10752, "西部": 37, "动作冒险": 10759, "儿童": 10762, "新闻": 10763,
+    "真人秀": 10764, "科幻奇幻": 10765, "肥皂剧": 10766, "脱口秀": 10767, "战争政治": 10768
 };
 
 function getGenreText(ids) {
@@ -300,12 +345,12 @@ async function loadTrendHub(params = {}) {
 }
 
 async function loadPlatformMatrix(params = {}) {
-    const { platformId, region = "all", category = "tv_drama", sort = "popularity.desc" } = params;
+    const { platformId, region = "all", genre = "all", category = "tv_drama", sort = "popularity.desc" } = params;
     const page = params.page || 1;
 
     // 如果选择了全部平台，需要分别获取数据
     if (platformId === "all") {
-        return await fetchAllPlatformsData(category, region, sort, page);
+        return await fetchAllPlatformsData(category, region, genre, sort, page);
     }
 
     const foreignPlatforms = ["213", "2739", "49", "2552"];
@@ -321,14 +366,25 @@ async function loadPlatformMatrix(params = {}) {
         include_null_first_air_dates: false
     };
 
+    // 添加类别筛选
+    addGenreFilter(queryParams, genre, category);
+    
     // 添加地区筛选
     addRegionFilter(queryParams, region, category);
 
     if (category.startsWith("tv_")) {
         queryParams.with_networks = platformId;
-        if (category === "tv_anime") queryParams.with_genres = "16";
-        else if (category === "tv_variety") queryParams.with_genres = "10764|10767";
-        else if (category === "tv_drama") queryParams.without_genres = "16,10764,10767";
+        if (category === "tv_anime") {
+            // 动漫类别已经通过with_genres筛选，这里不需要额外添加
+            queryParams.with_genres = genre !== "all" ? genre : "16";
+        } else if (category === "tv_variety") {
+            queryParams.with_genres = genre !== "all" ? genre : "10764|10767";
+        } else if (category === "tv_drama") {
+            queryParams.without_genres = "16,10764,10767";
+            if (genre !== "all") {
+                queryParams.with_genres = genre;
+            }
+        }
         
         return await fetchTmdbDiscover("tv", queryParams);
 
@@ -337,6 +393,10 @@ async function loadPlatformMatrix(params = {}) {
         queryParams.watch_region = "US";
         queryParams.with_watch_providers = usMap[platformId];
         
+        if (genre !== "all") {
+            queryParams.with_genres = genre;
+        }
+        
         return await fetchTmdbDiscover("movie", queryParams);
     }
 }
@@ -344,6 +404,23 @@ async function loadPlatformMatrix(params = {}) {
 // =========================================================================
 // 2. 数据获取 (Helpers)
 // =========================================================================
+
+// 新增：添加类别筛选参数
+function addGenreFilter(queryParams, genre, mediaType) {
+    if (genre === "all") return;
+    
+    // 根据媒体类型调整类别筛选
+    if (mediaType.startsWith("tv_")) {
+        // 对于电视剧，某些类别可能需要特殊处理
+        const tvSpecificGenres = ["16", "10764", "10767"]; // 动画、真人秀、脱口秀
+        if (tvSpecificGenres.includes(genre)) {
+            // 这些类别已经在category中处理，这里不需要重复添加
+            return;
+        }
+    }
+    
+    queryParams.with_genres = genre;
+}
 
 // 新增：添加地区筛选参数
 function addRegionFilter(queryParams, region, mediaType) {
@@ -354,25 +431,13 @@ function addRegionFilter(queryParams, region, mediaType) {
 
     if (config.languages && config.languages.length > 0) {
         // TMDB 使用 with_original_language 进行原始语言筛选
-        if (mediaType.startsWith("tv_")) {
-            queryParams.with_original_language = config.languages[0]; // TMDB 只支持单一语言
-        } else {
-            queryParams.with_original_language = config.languages[0];
-        }
+        queryParams.with_original_language = config.languages[0]; // TMDB 只支持单一语言
     }
 
     // 对于"其他地区"，需要排除特定国家的作品
     if (region === "other" && config.excludeCountries.length > 0) {
-        // 注意：TMDB 的 API 可能不支持直接的地区排除，这里我们会在后续处理中过滤
         // 添加一个标记，用于后续过滤
         queryParams._region_filter = "other";
-    }
-
-    // 对于特定国家，可以添加 production_countries 筛选（如果 API 支持）
-    if (config.countries && config.countries.length > 0 && region !== "other") {
-        // TMDB discover API 支持 with_original_language 和 with_production_countries
-        // 但 with_production_countries 在某些端点可能不支持
-        // 这里我们主要依赖语言筛选，并在后续处理中补充
     }
 }
 
@@ -386,13 +451,25 @@ function filterByRegion(items, region) {
     return items.filter(item => {
         // 这里需要根据实际数据中的信息进行过滤
         // 由于 TMDB 返回的数据中可能没有完整的地区信息，我们主要依赖原始语言筛选
-        // 如果未来有更详细的地区数据，可以增强这里的过滤逻辑
         return true; // 暂时返回所有，因为已经在 API 层面做了语言筛选
     });
 }
 
-// 新增：获取所有平台的数据
-async function fetchAllPlatformsData(category, region, sort, page) {
+// 新增：根据类别过滤结果
+function filterByGenre(items, genre) {
+    if (genre === "all") return items;
+    
+    return items.filter(item => {
+        // 如果item有genre_ids字段，可以直接过滤
+        if (item.genre_ids && Array.isArray(item.genre_ids)) {
+            return item.genre_ids.includes(parseInt(genre));
+        }
+        return true; // 如果没有genre_ids，暂时保留
+    });
+}
+
+// 修改：获取所有平台的数据，增加类别参数
+async function fetchAllPlatformsData(category, region, genre, sort, page) {
     // 所有平台的ID列表
     const allPlatforms = ["2007", "1330", "1419", "1631", "1605", "213", "2739", "49", "2552"];
     const foreignPlatforms = ["213", "2739", "49", "2552"];
@@ -423,20 +500,34 @@ async function fetchAllPlatformsData(category, region, sort, page) {
                 include_null_first_air_dates: false
             };
 
+            // 添加类别筛选
+            addGenreFilter(queryParams, genre, category);
+            
             // 添加地区筛选
             addRegionFilter(queryParams, region, category);
 
             if (category.startsWith("tv_")) {
                 queryParams.with_networks = platformId;
-                if (category === "tv_anime") queryParams.with_genres = "16";
-                else if (category === "tv_variety") queryParams.with_genres = "10764|10767";
-                else if (category === "tv_drama") queryParams.without_genres = "16,10764,10767";
+                if (category === "tv_anime") {
+                    queryParams.with_genres = genre !== "all" ? genre : "16";
+                } else if (category === "tv_variety") {
+                    queryParams.with_genres = genre !== "all" ? genre : "10764|10767";
+                } else if (category === "tv_drama") {
+                    queryParams.without_genres = "16,10764,10767";
+                    if (genre !== "all") {
+                        queryParams.with_genres = genre;
+                    }
+                }
                 
                 return await fetchTmdbDiscoverRaw("tv", queryParams);
             } else if (category === "movie") {
                 const usMap = { "213":"8", "2739":"337", "49":"1899|15", "2552":"350" };
                 queryParams.watch_region = "US";
                 queryParams.with_watch_providers = usMap[platformId];
+                
+                if (genre !== "all") {
+                    queryParams.with_genres = genre;
+                }
                 
                 return await fetchTmdbDiscoverRaw("movie", queryParams);
             }
@@ -455,6 +546,9 @@ async function fetchAllPlatformsData(category, region, sort, page) {
 
         // 应用地区过滤
         allItems = filterByRegion(allItems, region);
+        
+        // 应用类别过滤（补充过滤，确保准确性）
+        allItems = filterByGenre(allItems, genre);
 
         // 去重（基于tmdbId）
         const uniqueItems = [];
