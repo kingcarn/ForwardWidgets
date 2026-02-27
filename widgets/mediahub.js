@@ -3,7 +3,7 @@ WidgetMetadata = {
     title: "kingcarn's FWD module",
     author: "kingcarn",
     description: "增加全平台和时间排序",
-    version: "1.3.9", // 升级版本号
+    version: "1.3.10", // 升级版本号
     requiredVersion: "0.0.1",
     site: "https://github.com/kingcarn",
     // 1. 全局参数 (仅剩 Trakt ID，且选填)
@@ -21,7 +21,7 @@ WidgetMetadata = {
         {
             title: "🔥 全球热榜聚合",
             functionName: "loadTrendHub",
-            type: "video", // 改为 video 以支持更好的海报排版
+            type: "video",
             cacheDuration: 3600,
             params: [
                 {
@@ -145,16 +145,22 @@ WidgetMetadata = {
                         { title: "🎬 电影", value: "movie" } 
                     ]
                 },
+                // 将排序选项提前，并添加快捷选择支持
                 {
                     name: "sort_by",
                     title: "排序方式",
                     type: "enumeration",
                     value: "popularity.desc",
+                    // 添加quickSelect属性，指示UI优先显示为快捷选择
+                    quickSelect: true,
+                    // 简化选项标题，便于快捷选择
                     enumOptions: [
-                        { title: "🔥 热度最高", value: "popularity.desc" },
-                        { title: "⭐ 评分最高", value: "vote_average.desc" },
-                        { title: "⬆️ 发行时间", value: "release_date.desc" },
-                        { title: "⬇️ 发行时间", value: "release_date.asc" }
+                        { title: "🔥 热度", value: "popularity.desc" },
+                        { title: "⭐ 评分", value: "vote_average.desc" },
+                        { title: "🌞 最新", value: "first_air_date.desc" },
+                        { title: "✨ 最早", value: "first_air_date.asc" },
+                        { title: "⬆️ 发行倒序", value: "release_date.desc" },
+                        { title: "⬇️ 发行正序", value: "release_date.asc" }
                     ]
                 },
                 { name: "page", title: "页码", type: "page" }
@@ -321,7 +327,7 @@ async function loadTrendHub(params = {}) {
         return (await Promise.all(promises)).filter(Boolean);
     }
 
-    // --- Douban (保持不变) ---
+    // --- Douban ---
     if (source.startsWith("db_")) {
         let tag = "热门", type = "tv";
         if (source === "db_tv_cn") { tag = "国产剧"; type = "tv"; }
@@ -331,17 +337,24 @@ async function loadTrendHub(params = {}) {
         return await fetchDoubanAndMap(tag, type, page);
     }
 
-    // --- Bilibili / Bangumi (保持不变) ---
+    // --- Bilibili ---
     if (source.startsWith("bili_")) {
         const type = source === "bili_cn" ? 4 : 1; 
         return await fetchBilibiliRank(type, page);
     }
+    
+    // --- Bangumi ---
     if (source === "bgm_daily") {
         if (page > 1) return [];
         return await fetchBangumiDaily();
     }
 }
 
+/**
+ * 平台分流片库主函数
+ * @param {Object} params - 参数对象
+ * @returns {Promise<Array>} 影视数据列表
+ */
 async function loadPlatformMatrix(params = {}) {
     const { platformId, region = "all", genre = "all", category = "tv_drama", sort_by = "popularity.desc" } = params;
     const page = params.page || 1;
@@ -373,7 +386,6 @@ async function loadPlatformMatrix(params = {}) {
     if (category.startsWith("tv_")) {
         queryParams.with_networks = platformId;
         if (category === "tv_anime") {
-            // 动漫类别已经通过with_genres筛选，这里不需要额外添加
             queryParams.with_genres = genre !== "all" ? genre : "16";
         } else if (category === "tv_variety") {
             queryParams.with_genres = genre !== "all" ? genre : "10764|10767";
@@ -453,7 +465,7 @@ function filterByRegion(items, region) {
     });
 }
 
-// 新增：根据类别过滤结果
+// 根据类别过滤结果
 function filterByGenre(items, genre) {
     if (genre === "all") return items;
     
@@ -466,7 +478,7 @@ function filterByGenre(items, genre) {
     });
 }
 
-// 修改：获取所有平台的数据，增加类别参数
+// 获取所有平台的数据
 async function fetchAllPlatformsData(category, region, genre, sort, page) {
     // 所有平台的ID列表
     const allPlatforms = ["2007", "1330", "1419", "1631", "1605", "213", "2739", "49", "2552"];
@@ -559,19 +571,33 @@ async function fetchAllPlatformsData(category, region, genre, sort, page) {
             }
         });
 
-        // 根据排序参数重新排序
+        // 修复：改进日期排序逻辑，将字符串日期转换为Date对象进行正确比较
         uniqueItems.sort((a, b) => {
+            // 热度排序
             if (sort.includes("popularity")) {
                 return (b.rating || 0) - (a.rating || 0);
-            } else if (sort.includes("vote_average")) {
+            } 
+            // 评分排序
+            else if (sort.includes("vote_average")) {
                 return (b.rating || 0) - (a.rating || 0);
-            } else if (sort.includes("first_air_date") || sort.includes("release_date")) {
-                const dateA = a.releaseDate || "";
-                const dateB = b.releaseDate || "";
+            } 
+            // 日期排序（电视剧和电影统一处理）
+            else if (sort.includes("first_air_date") || sort.includes("release_date")) {
+                const dateA = a.releaseDate ? new Date(a.releaseDate) : null;
+                const dateB = b.releaseDate ? new Date(b.releaseDate) : null;
+                
+                // 处理空日期的情况（将空日期排在最后）
+                if (!dateA && !dateB) return 0;
+                if (!dateA) return 1;  // a无日期，排在后面
+                if (!dateB) return -1; // b无日期，排在后面
+                
+                // 降序排列（最新的在前）
                 if (sort.endsWith(".desc")) {
-                    return dateB.localeCompare(dateA);
-                } else {
-                    return dateA.localeCompare(dateB);
+                    return dateB.getTime() - dateA.getTime();
+                } 
+                // 升序排列（最早的在前）
+                else {
+                    return dateA.getTime() - dateB.getTime();
                 }
             }
             return 0;
@@ -585,7 +611,12 @@ async function fetchAllPlatformsData(category, region, genre, sort, page) {
     }
 }
 
-// 新增：原始数据获取，不进行buildItem处理
+/**
+ * 获取TMDB发现页面的原始数据
+ * @param {string} mediaType - 媒体类型（tv/movie）
+ * @param {Object} params - 查询参数
+ * @returns {Promise<Array>} 影视数据列表
+ */
 async function fetchTmdbDiscoverRaw(mediaType, params) {
     try {
         const res = await Widget.tmdb.get(`/discover/${mediaType}`, { params });
@@ -611,15 +642,24 @@ async function fetchTmdbDiscoverRaw(mediaType, params) {
             });
         });
     } catch (e) { 
+        console.error(`fetchTmdbDiscoverRaw error for ${mediaType}:`, e);
         return []; 
     }
 }
 
+/**
+ * 获取TMDB发现页面数据（带空数据提示）
+ * @param {string} mediaType - 媒体类型（tv/movie）
+ * @param {Object} params - 查询参数
+ * @returns {Promise<Array>} 影视数据列表
+ */
 async function fetchTmdbDiscover(mediaType, params) {
     try {
         const res = await Widget.tmdb.get(`/discover/${mediaType}`, { params });
         const data = res || {};
-        if (!data.results || data.results.length === 0) return params.page === 1 ? [{ id: "empty", type: "text", title: "暂无数据" }] : [];
+        if (!data.results || data.results.length === 0) {
+            return params.page === 1 ? [{ id: "empty", type: "text", title: "暂无数据" }] : [];
+        }
         
         return data.results.map(item => {
             const date = item.first_air_date || item.release_date || "";
@@ -639,7 +679,10 @@ async function fetchTmdbDiscover(mediaType, params) {
                 desc: item.overview
             });
         });
-    } catch (e) { return [{ id: "err", type: "text", title: "加载失败" }]; }
+    } catch (e) { 
+        console.error(`fetchTmdbDiscover error for ${mediaType}:`, e);
+        return [{ id: "err", type: "text", title: "加载失败" }]; 
+    }
 }
 
 async function fetchTmdbDetail(id, type, stats, title) {
@@ -661,9 +704,12 @@ async function fetchTmdbDetail(id, type, stats, title) {
             subTitle: stats,
             desc: d.overview
         });
-    } catch (e) { return null; }
+    } catch (e) { 
+        return null; 
+    }
 }
 
+// TMDB 搜索函数
 async function searchTmdb(query, type) {
     const q = query.replace(/第[一二三四五六七八九十\d]+[季章]/g, "").trim();
     try {
@@ -674,7 +720,11 @@ async function searchTmdb(query, type) {
     } catch (e) { return null; }
 }
 
-// --- 更新：支持混合平台数据的排版融合 ---
+/**
+ * 合并TMDB数据到目标对象
+ * @param {Object} target - 目标对象
+ * @param {Object} source - TMDB源数据
+ */
 function mergeTmdb(target, source) {
     target.id = String(source.id);
     target.tmdbId = source.id;
@@ -687,12 +737,20 @@ function mergeTmdb(target, source) {
     target.genreTitle = genreText || (target.mediaType === "tv" ? "剧集" : "电影");
     target.releaseDate = date;
     
-    // 【修复点2】合并数据时，也要把 TMDB 查到的 overview 剧情拼接到末尾
+    // 合并数据时，把 TMDB 查到的 overview 剧情拼接到末尾
     const baseInfo = date ? `${date} · ${target.subTitle}` : target.subTitle;
     const overview = source.overview ? `\n${source.overview}` : "\n暂无简介";
     target.description = baseInfo + overview;
     
     target.rating = source.vote_average ? parseFloat(source.vote_average) : 0;
+    
+    // 添加原始语言信息，便于后续地区筛选
+    if (source.original_language) {
+        target.originalLanguage = source.original_language;
+    }
+    if (source.origin_country) {
+        target.originCountry = source.origin_country;
+    }
 }
 
 // =========================================================================
@@ -705,7 +763,9 @@ async function fetchTraktData(type, list, id, page) {
             headers: { "Content-Type": "application/json", "trakt-api-version": "2", "trakt-api-key": id }
         });
         return res.data || [];
-    } catch (e) { return []; }
+    } catch (e) { 
+        return []; 
+    }
 }
 
 async function fetchDoubanAndMap(tag, type, page) {
@@ -763,7 +823,9 @@ async function fetchBilibiliRank(type, page) {
             return finalItem;
         });
         return await Promise.all(promises);
-    } catch (e) { return [{ id: "err", type: "text", title: "B站连接失败" }]; }
+    } catch (e) { 
+        return [{ id: "err", type: "text", title: "B站连接失败" }]; 
+    }
 }
 
 async function fetchBangumiDaily() {
@@ -810,5 +872,7 @@ async function fetchTmdbFallback(traktType) {
                 desc: item.overview
             });
         });
-    } catch(e) { return []; }
+    } catch(e) { 
+        return []; 
+    }
 }
