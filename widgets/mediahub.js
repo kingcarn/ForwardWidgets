@@ -3,7 +3,7 @@ WidgetMetadata = {
     title: "kingcarn's FWD module",
     author: "kingcarn",
     description: "增加全平台和时间排序",
-    version: "1.3.7", // 升级版本号
+    version: "1.3.8", // 升级版本号
     requiredVersion: "0.0.1",
     site: "https://github.com/kingcarn",
     // 1. 全局参数 (仅剩 Trakt ID，且选填)
@@ -146,7 +146,7 @@ WidgetMetadata = {
                     ]
                 },
                 {
-                    name: "sort_by",
+                    name: "sort",
                     title: "排序方式",
                     type: "enumeration",
                     quickSelect: true,
@@ -154,10 +154,8 @@ WidgetMetadata = {
                     enumOptions: [
                         { title: "🔥 热度最高", value: "popularity.desc" },
                         { title: "⭐ 评分最高", value: "vote_average.desc" },
-                        { title: "📅 最新首播", value: "first_air_date.desc" },
-                        { title: "📅 最早首播", value: "first_air_date.asc" },
-                        { title: "📅 发行时间倒序", value: "release_date.desc" },
-                        { title: "📅 发行时间正序", value: "release_date.asc" }
+                        { title: "⬆️ 发行时间", value: "release_date.desc" },
+                        { title: "⬇️ 发行时间", value: "release_date.asc" }
                     ]
                 },
                 { name: "page", title: "页码", type: "page" }
