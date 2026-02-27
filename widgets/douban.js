@@ -1631,7 +1631,7 @@ async function getPreferenceRecommendations(params = {}) {
         }
         console.log("tags_sub: ", tags_sub);
 
-        const limit = 20;
+        const limit = 100;
         const offset = Number(params.offset);
         const url = `https://m.douban.com/rexxar/api/v2/${params.mediaType}/recommend?refresh=0&start=${offset}&count=${Number(offset) + limit}&selected_categories=${encodeURIComponent(JSON.stringify(selectedCategories))}&uncollect=false&score_range=${rating},10&tags=${encodeURIComponent(tags_sub.join(","))}&sort=${params.sort_by}`;
 
