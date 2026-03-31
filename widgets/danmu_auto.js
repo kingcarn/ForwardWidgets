@@ -15953,8 +15953,31 @@ var maiduidui_default = MaiduiduiSource;
 var DEFAULT_CONFIG_PAGE_URL = "https://www.yfsp.tv/";
 var DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0 Safari/537.36";
 var AIYIFAN_SIGNING_CONFIG_TTL_MS = 60 * 1e3;
+function safeGet(obj, path2, defaultValue) {
+  if (obj == null) return defaultValue;
+  const keys = path2.split(".");
+  let result = obj;
+  for (let i = 0; i < keys.length; i++) {
+    if (result == null) return defaultValue;
+    const key = keys[i];
+    const arrayMatch = key.match(/^(.+)\[(\d+)\]$/);
+    if (arrayMatch) {
+      const arrKey = arrayMatch[1];
+      const index = parseInt(arrayMatch[2], 10);
+      result = result[arrKey];
+      if (Array.isArray(result) && index < result.length) {
+        result = result[index];
+      } else {
+        return defaultValue;
+      }
+    } else {
+      result = result[key];
+    }
+  }
+  return result !== void 0 ? result : defaultValue;
+}
 function extractAssignedObjectLiteral(html, variableName) {
-  const assignmentPattern = new RegExp(`\\b(?:var|let|const)\\s+${variableName}\\s*=\\s*`);
+  const assignmentPattern = new RegExp("\\b(?:var|let|const)\\s+" + variableName + "\\s*=\\s*");
   const match = assignmentPattern.exec(html);
   if (!match) {
     return null;
@@ -16005,8 +16028,8 @@ function parseFallbackPConfig(html) {
   }
   let privateKeys = [];
   try {
-    privateKeys = JSON.parse(`[${match[2]}]`);
-  } catch {
+    privateKeys = JSON.parse("[" + match[2] + "]");
+  } catch (e) {
     return null;
   }
   if (!match[1] || !privateKeys.length) {
@@ -16018,9 +16041,11 @@ function parseFallbackPConfig(html) {
   };
 }
 function extractPConfigFromInjectJson(injectJson) {
-  const config = injectJson?.config?.[0]?.pConfig;
-  const publicKey = config?.publicKey;
-  const privateKey = Array.isArray(config?.privateKey) ? config.privateKey[0] : config?.privateKey;
+  const config = safeGet(injectJson, "config[0]", null);
+  const pConfig = config ? config.pConfig : null;
+  if (!pConfig) return null;
+  const publicKey = pConfig.publicKey;
+  const privateKey = Array.isArray(pConfig.privateKey) ? pConfig.privateKey[0] : pConfig.privateKey;
   if (!publicKey || !privateKey) {
     return null;
   }
@@ -16036,7 +16061,7 @@ function extractPConfigFromHtml(html) {
         return signingConfig;
       }
     } catch (error) {
-      log("warn", `[Aiyifan] \u89E3\u6790 injectJson \u5931\u8D25\uFF0C\u56DE\u9000\u5230 pConfig \u63D0\u53D6: ${error.message}`);
+      log("warn", "[Aiyifan] \u89E3\u6790 injectJson \u5931\u8D25\uFF0C\u56DE\u9000\u5230 pConfig \u63D0\u53D6: " + (error.message || "\u672A\u77E5\u9519\u8BEF"));
     }
   }
   return parseFallbackPConfig(html);
@@ -16054,12 +16079,19 @@ function splitQueryString(queryString) {
   if (!queryString) {
     return [];
   }
-  return queryString.split("&").filter(Boolean).map((pair) => {
+  return queryString.split("&").filter(Boolean).map(function(pair) {
     const equalsIndex = pair.indexOf("=");
     const rawKey = equalsIndex === -1 ? pair : pair.slice(0, equalsIndex);
     const rawValue = equalsIndex === -1 ? "" : pair.slice(equalsIndex + 1);
-    const key = decodeURIComponent(rawKey.replace(/\+/g, "%20"));
-    const value = decodeURIComponent(rawValue.replace(/\+/g, "%20"));
+    function safeDecode(str) {
+      try {
+        return decodeURIComponent(str.replace(/\+/g, "%20"));
+      } catch (e) {
+        return str;
+      }
+    }
+    const key = safeDecode(rawKey);
+    const value = safeDecode(rawValue);
     return [key, value];
   });
 }
@@ -16077,22 +16109,48 @@ function getQueryEntries(input) {
     if (queryIndex !== -1) {
       const hashIndex = trimmed.indexOf("#", queryIndex);
       queryString = trimmed.slice(queryIndex + 1, hashIndex === -1 ? void 0 : hashIndex);
-    } else if (trimmed.startsWith("?")) {
+    } else if (trimmed.charAt(0) === "?") {
       queryString = trimmed.slice(1);
     }
     return splitQueryString(queryString);
   }
-  if (input instanceof URLSearchParams) {
-    return Array.from(input.entries());
+  if (typeof input === "object" && input !== null) {
+    if (typeof input.entries === "function") {
+      try {
+        var entries = input.entries();
+        if (Array.isArray(entries)) {
+          return entries;
+        }
+        var result = [];
+        if (typeof input.forEach === "function") {
+          input.forEach(function(value, key) {
+            result.push([key, normalizeQueryValue(value)]);
+          });
+          return result.filter(function(item) {
+            return item[1] !== null;
+          });
+        }
+      } catch (e) {
+      }
+    }
+    return Object.keys(input).map(function(key) {
+      return [key, normalizeQueryValue(input[key])];
+    }).filter(function(item) {
+      return item[1] !== null;
+    });
   }
-  return Object.entries(input).map(([key, value]) => [key, normalizeQueryValue(value)]).filter(([, value]) => value !== null);
+  return [];
 }
 function buildCanonicalQuery(input) {
-  return getQueryEntries(input).filter(([key]) => !isSigningParam(key)).map(([key, value]) => `${key}=${value}`).join("&");
+  return getQueryEntries(input).filter(function(item) {
+    return !isSigningParam(item[0]);
+  }).map(function(item) {
+    return item[0] + "=" + item[1];
+  }).join("&");
 }
 function computeAiyifanVv(input, signingConfig) {
   const query = buildCanonicalQuery(input);
-  const raw = `${signingConfig.publicKey}&${query.toLowerCase()}&${signingConfig.privateKey}`;
+  const raw = signingConfig.publicKey + "&" + query.toLowerCase() + "&" + signingConfig.privateKey;
   return md5(raw);
 }
 function normalizeJsonPayload(data) {
@@ -16102,72 +16160,88 @@ function normalizeJsonPayload(data) {
   return data;
 }
 function isSignedRequestSuccessful(payload) {
-  return payload?.ret === 200 && payload?.data?.code === 0;
+  var ret = safeGet(payload, "ret", null);
+  var code = safeGet(payload, "data.code", null);
+  return ret === 200 && code === 0;
 }
 function getFailureMessage(payload, status) {
-  return payload?.data?.msg || payload?.msg || `HTTP ${status}`;
+  var msg = safeGet(payload, "data.msg", null) || safeGet(payload, "msg", null);
+  return msg || "HTTP " + status;
 }
 var AiyifanSigningProvider = class {
-  constructor(options = {}) {
-    this.request = options.request || httpGet;
-    this.proxyUrlBuilder = options.proxyUrlBuilder || ((url) => globals.makeProxyUrl(url));
+  constructor(options) {
+    options = options || {};
+    this.proxyUrlBuilder = options.proxyUrlBuilder || function(url) {
+      return globals.makeProxyUrl(url);
+    };
     this.userAgent = options.userAgent || DEFAULT_USER_AGENT;
     this.configPageUrl = options.configPageUrl || DEFAULT_CONFIG_PAGE_URL;
     this.ttlMs = options.ttlMs || AIYIFAN_SIGNING_CONFIG_TTL_MS;
-    this.now = options.now || (() => Date.now());
+    this.now = options.now || function() {
+      return Date.now();
+    };
     this.signingConfig = null;
     this.signingConfigFetchedAt = 0;
   }
-  async getSigningConfig(forceRefresh = false) {
-    const now = this.now();
-    const cacheValid = this.signingConfig && now - this.signingConfigFetchedAt < this.ttlMs;
+  async getSigningConfig(forceRefresh) {
+    forceRefresh = forceRefresh || false;
+    var now = this.now();
+    var cacheValid = this.signingConfig && now - this.signingConfigFetchedAt < this.ttlMs;
     if (!forceRefresh && cacheValid) {
       return this.signingConfig;
     }
-    const response = await this.request(this.proxyUrlBuilder(this.configPageUrl), {
+    var response = await Widget.http.get(this.proxyUrlBuilder(this.configPageUrl), {
       headers: {
         "User-Agent": this.userAgent,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
       }
     });
-    const html = typeof response.data === "string" ? response.data : String(response.data ?? "");
-    const signingConfig = extractPConfigFromHtml(html);
+    var html = typeof response.data === "string" ? response.data : String(response.data || "");
+    var signingConfig = extractPConfigFromHtml(html);
     if (!signingConfig) {
       throw new Error("\u672A\u80FD\u4ECE\u684C\u9762\u7AD9\u9875\u9762\u89E3\u6790\u5230 pConfig");
     }
     this.signingConfig = signingConfig;
     this.signingConfigFetchedAt = now;
-    log("info", `[Aiyifan] \u5DF2\u66F4\u65B0\u684C\u9762\u7AD9\u7B7E\u540D\u914D\u7F6E: ${signingConfig.publicKey.slice(0, 12)}...`);
+    log("info", "[Aiyifan] \u5DF2\u66F4\u65B0\u684C\u9762\u7AD9\u7B7E\u540D\u914D\u7F6E: " + signingConfig.publicKey.slice(0, 12) + "...");
     return signingConfig;
   }
   buildSignedParams(baseParams, signingConfig) {
-    return {
-      ...baseParams,
-      vv: computeAiyifanVv(baseParams, signingConfig),
-      pub: signingConfig.publicKey
-    };
+    var result = {};
+    for (var key in baseParams) {
+      if (baseParams.hasOwnProperty(key)) {
+        result[key] = baseParams[key];
+      }
+    }
+    result.vv = computeAiyifanVv(baseParams, signingConfig);
+    result.pub = signingConfig.publicKey;
+    return result;
   }
-  async signedGetJson(api, baseParams, headers = {}, logPrefix = "Aiyifan", forceRefresh = false) {
-    const signingConfig = await this.getSigningConfig(forceRefresh);
-    const signedParams = this.buildSignedParams(baseParams, signingConfig);
-    const requestUrl = updateQueryString(api, signedParams);
-    const response = await this.request(this.proxyUrlBuilder(requestUrl), { headers });
-    let payload;
+  async signedGetJson(api, baseParams, headers, logPrefix, forceRefresh) {
+    headers = headers || {};
+    logPrefix = logPrefix || "Aiyifan";
+    forceRefresh = forceRefresh || false;
+    var signingConfig = await this.getSigningConfig(forceRefresh);
+    var signedParams = this.buildSignedParams(baseParams, signingConfig);
+    var requestUrl = updateQueryString(api, signedParams);
+    var response = await Widget.http.get(this.proxyUrlBuilder(requestUrl), { headers });
+    var payload;
     try {
       payload = normalizeJsonPayload(response.data);
     } catch (error) {
       if (!forceRefresh) {
-        log("warn", `[${logPrefix}] \u54CD\u5E94\u65E0\u6CD5\u89E3\u6790\u4E3A JSON\uFF0C\u5237\u65B0\u7B7E\u540D\u914D\u7F6E\u540E\u91CD\u8BD5: ${error.message}`);
+        log("warn", "[" + logPrefix + "] \u54CD\u5E94\u65E0\u6CD5\u89E3\u6790\u4E3A JSON\uFF0C\u5237\u65B0\u7B7E\u540D\u914D\u7F6E\u540E\u91CD\u8BD5: " + (error.message || "\u672A\u77E5\u9519\u8BEF"));
         return this.signedGetJson(api, baseParams, headers, logPrefix, true);
       }
       throw error;
     }
-    if (response.status !== 200 || !isSignedRequestSuccessful(payload)) {
+    var statusCode = response.status != null ? response.status : 200;
+    if (statusCode !== 200 || !isSignedRequestSuccessful(payload)) {
       if (!forceRefresh) {
-        log("warn", `[${logPrefix}] \u5F53\u524D\u7B7E\u540D\u8BF7\u6C42\u5931\u8D25\uFF0C\u5237\u65B0 pConfig \u540E\u91CD\u8BD5: ${getFailureMessage(payload, response.status)}`);
+        log("warn", "[" + logPrefix + "] \u5F53\u524D\u7B7E\u540D\u8BF7\u6C42\u5931\u8D25\uFF0C\u5237\u65B0 pConfig \u540E\u91CD\u8BD5: " + getFailureMessage(payload, statusCode));
         return this.signedGetJson(api, baseParams, headers, logPrefix, true);
       }
-      throw new Error(getFailureMessage(payload, response.status));
+      throw new Error(getFailureMessage(payload, statusCode));
     }
     return {
       data: payload,
